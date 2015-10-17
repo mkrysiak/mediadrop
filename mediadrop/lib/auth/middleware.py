@@ -6,6 +6,7 @@
 # See LICENSE.txt in the main project directory, for more information.
 
 import re
+import ldap
 
 from repoze.who.classifiers import default_request_classifier
 from repoze.who.middleware import PluggableAuthenticationMiddleware
@@ -13,6 +14,8 @@ from repoze.who.plugins.auth_tkt import AuthTktCookiePlugin
 from repoze.who.plugins.friendlyform import FriendlyFormPlugin
 from repoze.who.plugins.sa import SQLAlchemyAuthenticatorPlugin
 from webob.request import Request
+from webob.exc import HTTPFound
+from paste.request import get_cookies
 
 from mediadrop.config.routing import login_form_url, login_handler_url, \
     logout_handler_url, post_login_url, post_logout_url
@@ -21,17 +24,20 @@ from mediadrop.lib.auth.permission_system import MediaDropPermissionSystem
 
 
 
-__all__ = ['add_auth', 'classifier_for_flash_uploads', 'session_validity']
+__all__ = ['add_auth', 'classifier_for_flash_uploads', 'session_validity', 'create_new_user']
 
 days_as_seconds = lambda days: days * 24*60*60
 session_validity = days_as_seconds(30) # session expires after 30 days
 
 class MediaDropAuthenticatorPlugin(SQLAlchemyAuthenticatorPlugin):
     def authenticate(self, environ, identity):
-        login = super(MediaDropAuthenticatorPlugin, self).authenticate(environ, identity)
-        if login is None:
+        #login = super(MediaDropAuthenticatorPlugin, self).authenticate(environ, identity)
+        #if login is None:
+        if identity['login'] is None:
             return None
-        user = self.get_user(login)
+        if (identity['login'] != environ['HTTP_REMOTE_USER']):
+            return None
+        user = self.get_user(identity['login'])
         # The return value of this method is used to identify the user later on.
         # As the username can be changed, that's not really secure and may 
         # lead to confusion (user is logged out unexpectedly, best case) or 
@@ -79,6 +85,42 @@ class MediaDropLoginForm(FriendlyFormPlugin):
             credentials['max_age'] = session_validity
         return credentials
 
+class MediaDropKerberos(object):
+    def __init__(self, config):
+        self.config = config
+
+    def identify(self, environ):
+        cookies = get_cookies(environ)
+        cookie = cookies.get('authtkt')
+
+        username = environ.get('HTTP_REMOTE_USER', '')
+
+        if username == '' or cookie is not None:
+            return None
+
+        create_new_user(username, self.config)
+        credentials = { 'login': username,
+                        'max_age': session_validity }
+        referer = environ.get('PATH_INFO')
+        environ['repoze.who.application'] = HTTPFound(location=referer)
+        return credentials
+
+    def remember(self, environ, identity):
+        rememberer = self._get_rememberer(environ)
+        return rememberer.remember(environ, identity)
+
+    def forget(self, environ, identity):
+        forgetter = self._get_forgetter(environ)
+        return forgetter.forget(environ, identity)
+
+    def _get_rememberer(self, environ):
+        rememberer = environ['repoze.who.plugins']['cookie']
+        return rememberer
+
+    def _get_forgetter(self, environ):
+        rememberer = environ['repoze.who.plugins']['cookie']
+        return rememberer
+
 
 def mediadrop_challenge_decider(environ, status, headers):
     is_xhr = environ.get('HTTP_X_REQUESTED_WITH', '') == 'XMLHttpRequest'
@@ -99,6 +141,9 @@ def who_args(config):
         rememberer_name='cookie',
         charset='utf-8',
     )
+
+    kerb = MediaDropKerberos(config)
+
     cookie_secret = config['sa_auth.cookie_secret']
     cookie = MediaDropCookiePlugin(cookie_secret,
         cookie_name='authtkt', 
@@ -113,7 +158,8 @@ def who_args(config):
         'challenge_decider': mediadrop_challenge_decider,
         'challengers': [('form', form)],
         'classifier': classifier_for_flash_uploads,
-        'identifiers': [('main_identifier', form), ('cookie', cookie)],
+        #'identifiers': [('main_identifier', form), ('cookie', cookie)],
+        'identifiers': [('cookie', cookie), ('kerberos', kerb)],
         'mdproviders': [],
     }
     return who_args
@@ -165,4 +211,35 @@ def classifier_for_flash_uploads(environ):
             pass
     return classification
 
+def create_new_user(username, config):
+    from mediadrop.model import DBSession, User, fetch_row, Group
+
+    user = User.by_user_name(username)
+
+    if user is None:
+        try:
+            print "MIDDLEWARE"
+            print config
+            l = ldap.initialize(config['ldap_url'])        
+            l.simple_bind_s(config['ldap_binddn'], config['ldap_pw'])
+            filter = '(samaccountname=%s)' % username
+            r = l.search_s(config['ldap_base'],ldap.SCOPE_SUBTREE, filter, ['displayname', 'mail'])
+            l.unbind_s()
+
+            user_attrs = {}
+            for dn, entry in r:
+                for attr, v in entry.iteritems():
+                    user_attrs[attr] = v[0]
+        except ldap.LDAPError:
+            l.unbind_s()
+
+        new_user = fetch_row(User, "new")
+        new_user.display_name = user_attrs['displayName']
+        new_user.email_address = user_attrs['mail']
+        new_user.user_name = username
+        query = DBSession.query(Group).filter(Group.group_name.in_(['authenticated']))
+        new_user.groups = list(query.all())
+
+        DBSession.add(new_user)
+        DBSession.commit()
 

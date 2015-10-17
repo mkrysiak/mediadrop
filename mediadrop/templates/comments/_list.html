@@ -23,7 +23,7 @@ See LICENSE.txt in the main project directory, for more information.
 		<li class="comment">
 			<div class="comment-top-divot"></div>
 			<div class="comment-content clearfix">
-				<span class="avatar"><img src="${h.gravatar_from_email(comment.author.email, 70)}" width="70" height="70" alt="" /></span>
+        <!-- <span class="avatar"><img src="${h.gravatar_from_email(comment.author.email, 70)}" width="70" height="70" alt="" /></span> -->
 				<cite>
 					<a href="#comment-${comment.id}" name="comment-${comment.id}" class="underline-hover" title="Permalink"
 					   py:with="datetime = h.format_datetime(comment.created_on)">
@@ -61,6 +61,7 @@ See LICENSE.txt in the main project directory, for more information.
 						values = values or {};
 						errors = tmpl_context.form_errors or {};
 					">
+          <!--
 						<li id="name-container" class="even" py:with="error = errors.get('name', None)">
 							<div py:if="error" class="form-error">${error}</div>
 							<div id="name-label" class="form-label">
@@ -79,6 +80,7 @@ See LICENSE.txt in the main project directory, for more information.
 								<input type="text" name="email" class="textfield" id="email" value="${values.get('email', None)}" maxlength="255" />
 							</div>
 						</li>
+            -->
 						<li id="body-container" class="even" py:with="error = errors.get('body', None)">
 							<div py:if="error" class="form-error">${error}</div>
 							<div id="body-label" class="form-label">

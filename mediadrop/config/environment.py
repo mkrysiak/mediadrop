@@ -122,6 +122,20 @@ def load_environment(global_conf, app_conf):
     if swift_user is not None:
         config['swift_user'] = swift_user
 
+    ldap_url = os.environ.get("LDAP_URL", None)
+    ldap_binddn = os.environ.get("LDAP_BINDDN", None)
+    ldap_pw = os.environ.get("LDAP_PW", None)
+    ldap_base = os.environ.get("LDAP_BASE", None)
+
+    if ldap_url is not None:
+        config['ldap_url'] = ldap_url
+    if ldap_binddn is not None:
+        config['ldap_binddn'] = ldap_binddn
+    if ldap_pw is not None:
+        config['ldap_pw'] = ldap_pw
+    if ldap_base is not None:
+        config['ldap_base'] = ldap_base
+
     # END CUSTOM CONFIGURATION OPTIONS
 
     events.Environment.loaded(config)

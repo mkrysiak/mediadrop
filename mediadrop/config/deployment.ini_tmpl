@@ -24,6 +24,11 @@ swift_container = mycontainer
 swift_key = myauthkey
 swift_user = myuser:user
 
+ldap_url = ldap://ldap.example.com
+ldap_binddn = CN=user,ou=accounts,DC=example,DC=com
+ldap_pw = password
+ldap_base = ou=base,dc=example,dc=com
+
 # Plugins which should be enabled for this MediaDrop instance (by default all
 # plugins are enabled)
 # To enable only specific plugins just add them as comma-separated list, e.g.:

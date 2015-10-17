@@ -32,7 +32,7 @@ from mediadrop.lib.i18n import _
 from mediadrop.lib.services import Facebook
 from mediadrop.lib.templating import render
 from mediadrop.model import (DBSession, fetch_row, Media, MediaFile, Comment, 
-    Tag, Category, AuthorWithIP, Podcast)
+    Tag, Category, AuthorWithIP, Podcast, User)
 from mediadrop.plugin import events
 
 log = logging.getLogger(__name__)
@@ -275,7 +275,8 @@ class MediaController(BaseController):
     @validate_xhr(comment_schema, error_handler=view)
     @autocommit
     @observable(events.MediaController.comment)
-    def comment(self, slug, name='', email=None, body='', **kwargs):
+    #def comment(self, slug, name='', email=None, body='', **kwargs):
+    def comment(self, slug, body='', **kwargs):
         """Post a comment from :class:`~mediadrop.forms.comments.PostCommentForm`.
 
         :param slug: The media :attr:`~mediadrop.model.media.Media.slug`
@@ -319,8 +320,10 @@ class MediaController(BaseController):
 
         c = Comment()
 
-        name = filter_vulgarity(name)
-        c.author = AuthorWithIP(name, email, request.environ['REMOTE_ADDR'])
+        #name = filter_vulgarity(name)
+        #c.author = AuthorWithIP(name, email, request.environ['REMOTE_ADDR'])
+        user = User.by_user_name(request.environ['HTTP_REMOTE_USER'])
+        c.author = AuthorWithIP(user.display_name, None, request.environ['REMOTE_ADDR'])
         c.subject = 'Re: %s' % media.title
         c.body = filter_vulgarity(body)
 

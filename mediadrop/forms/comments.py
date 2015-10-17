@@ -11,7 +11,7 @@ from mediadrop.forms import TextField, XHTMLValidator, email_validator
 from mediadrop.lib.i18n import N_
 
 class PostCommentSchema(Schema):
-    name = TextField.validator(not_empty=True, maxlength=50,
-        messages={'empty': N_('Please enter your name!')})
-    email = email_validator()
+    #name = TextField.validator(not_empty=True, maxlength=50,
+    #    messages={'empty': N_('Please enter your name!')})
+    #email = email_validator()
     body = XHTMLValidator(not_empty=True)

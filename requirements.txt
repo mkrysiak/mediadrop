@@ -38,3 +38,4 @@ aniso8601==1.0.0
 bleach >= 1.4.1
 python-swiftclient == 2.6.0
 configobj
+python-ldap==2.4.21
