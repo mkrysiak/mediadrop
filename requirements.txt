@@ -36,3 +36,5 @@ simplejson >= 2.2.1 # (version required by Pylons 1.0)
 --index-url=http://pypi.python.org/simple
 aniso8601==1.0.0
 bleach >= 1.4.1
+python-swiftclient == 2.6.0
+configobj

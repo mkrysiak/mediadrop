@@ -74,6 +74,11 @@ def load_environment(global_conf, app_conf):
         callback=enable_i18n_for_template,
     )
 
+    #For Heroku, read DATABASE_URL from the environment
+    database_url = os.environ.get("DATABASE_URL", False)
+    if database_url:
+        config['sqlalchemy.url'] = database_url
+
     # Setup the SQLAlchemy database engine
     engine = engine_from_config(config, 'sqlalchemy.')
     init_model(engine, config.get('db_table_prefix', None))
@@ -101,6 +106,21 @@ def load_environment(global_conf, app_conf):
             'l': (600, 600),
         },
     }
+
+    # For Heroku, read Swift configuration from the environment
+    swift_auth = os.environ.get("SWIFT_AUTH", None)
+    swift_container = os.environ.get("SWIFT_CONTAINER", None)
+    swift_key = os.environ.get("SWIFT_KEY", None)
+    swift_user = os.environ.get("SWIFT_USER", None)
+
+    if swift_auth is not None:
+        config['swift_auth'] = swift_auth
+    if swift_container is not None:
+        config['swift_container'] = swift_container
+    if swift_key is not None:
+        config['swift_key'] = swift_key
+    if swift_user is not None:
+        config['swift_user'] = swift_user
 
     # END CUSTOM CONFIGURATION OPTIONS
 

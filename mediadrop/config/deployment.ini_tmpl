@@ -19,6 +19,11 @@ sqlalchemy.echo = False
 sqlalchemy.pool_recycle = 3600
 db.check_for_leaked_connections = False
 
+swift_auth = http://my.swift.server/auth/v1.0
+swift_container = mycontainer
+swift_key = myauthkey
+swift_user = myuser:user
+
 # Plugins which should be enabled for this MediaDrop instance (by default all
 # plugins are enabled)
 # To enable only specific plugins just add them as comma-separated list, e.g.:

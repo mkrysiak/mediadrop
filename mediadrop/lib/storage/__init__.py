@@ -9,6 +9,7 @@ from mediadrop.lib.storage.api import *
 
 from mediadrop.lib.storage.localfiles import LocalFileStorage
 from mediadrop.lib.storage.remoteurls import RemoteURLStorage
+from mediadrop.lib.storage.swift import SwiftStorage
 from mediadrop.lib.storage.ftp import FTPStorage
 from mediadrop.lib.storage.youtube import YoutubeStorage
 from mediadrop.lib.storage.vimeo import VimeoStorage

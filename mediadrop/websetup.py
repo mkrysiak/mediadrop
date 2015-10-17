@@ -20,7 +20,7 @@ from PIL import Image
 from mediadrop.config.environment import load_environment
 from mediadrop.lib.i18n import N_
 from mediadrop.lib.storage import (BlipTVStorage, DailyMotionStorage,
-    LocalFileStorage, RemoteURLStorage, VimeoStorage, YoutubeStorage)
+    LocalFileStorage, RemoteURLStorage, SwiftStorage, VimeoStorage, YoutubeStorage)
 from mediadrop.migrations.util import MediaDropMigrator
 from mediadrop.plugin import events
 
@@ -309,6 +309,7 @@ def add_default_data():
     # between the default storage engines and default players.
     remote_url_storage = RemoteURLStorage()
     default_engines = [
+        SwiftStorage(),
         LocalFileStorage(),
         remote_url_storage,
         YoutubeStorage(),

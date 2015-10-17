@@ -10,6 +10,9 @@ import os
 import re
 import shutil
 
+import logging
+import swiftclient
+
 from PIL import Image
 # XXX: note that pylons.url is imported here. Make sure to only use it with
 #      absolute paths (ie. those starting with a /) to avoid differences in
@@ -19,11 +22,29 @@ from pylons import config, url as url_for
 import mediadrop
 from mediadrop.lib.util import delete_files
 
+log = logging.getLogger(__name__)
+#logging.basicConfig(level=logging.DEBUG)
+
+
 __all__ = [
     'create_default_thumbs_for', 'create_thumbs_for', 'delete_thumbs',
     'has_thumbs', 'has_default_thumbs',
     'ThumbDict', 'thumb', 'thumb_path', 'thumb_paths', 'thumb_url',
 ]
+
+def _connect():
+    """Open a connection to the FTP server."""
+
+    swift_auth = config['swift_auth']
+    swift_key = config['swift_key']
+    swift_user = config['swift_user']
+
+    return swiftclient.client.Connection(auth_version='1',
+                                             user = swift_user,
+                                             key = swift_key,
+                                             authurl = swift_auth)
+
+
 
 def _normalize_thumb_item(item):
     """Pass back the image subdir and id when given a media or podcast."""
@@ -62,6 +83,43 @@ def thumb_path(item, size, exists=False, ext='jpg'):
         return None
     return image_path
 
+def swift_thumb_path(item, size, exists=False, ext='jpg'):
+    """Get the thumbnail path for the given item and size.
+
+    :param item: A 2-tuple with a subdir name and an ID. If given a
+        ORM mapped class with _thumb_dir and id attributes, the info
+        can be extracted automatically.
+    :type item: ``tuple`` or mapped class instance
+    :param size: Size key to display, see ``thumb_sizes`` in
+        :mod:`mediadrop.config.app_config`
+    :type size: str
+    :param exists: If enabled, checks to see if the file actually exists.
+        If it doesn't exist, ``None`` is returned.
+    :type exists: bool
+    :param ext: The extension to use, defaults to jpg.
+    :type ext: str
+    :returns: The absolute system path or ``None``.
+    :rtype: str
+
+    """
+    if not item:
+        return None
+
+    image_dir, item_id = _normalize_thumb_item(item)
+    image = '%s/%s%s.%s' % (image_dir, item_id, size, ext)
+
+    if exists:
+        try:
+            swift = _connect()
+            swift.head_object(config['swift_container'], image)
+            swift.close()
+        except Exception, e:
+            log.exception(e)
+            swift.close()
+            return None
+
+    return image
+
 def thumb_paths(item, **kwargs):
     """Return a list of paths to all sizes of thumbs for a given item.
 
@@ -86,7 +144,31 @@ def thumb_paths(item, **kwargs):
                 break
     return paths
 
-def thumb_url(item, size, qualified=False, exists=False):
+def swift_thumb_paths(item, **kwargs):
+    """Return a list of paths to all sizes of thumbs for a given item.
+
+    :param item: A 2-tuple with a subdir name and an ID. If given a
+        ORM mapped class with _thumb_dir and id attributes, the info
+        can be extracted automatically.
+    :type item: ``tuple`` or mapped class instance
+    :returns: thumb sizes and their paths
+    :rtype: ``dict``
+
+    """
+    image_dir, item_id = _normalize_thumb_item(item)
+    paths = dict((key, swift_thumb_path(item, key, **kwargs))
+                 for key in config['thumb_sizes'][image_dir].iterkeys())
+    # We can only find the original image but examining the file system,
+    # so only return it if exists is True.
+    if kwargs.get('exists', False):
+        for extname in ('jpg', 'png'):
+            path = swift_thumb_path(item, 'orig', **kwargs)
+            if path:
+                paths['orig'] = path
+                break
+    return paths
+
+def old_thumb_url(item, size, qualified=False, exists=False):
     """Get the thumbnail url for the given item and size.
 
     :param item: A 2-tuple with a subdir name and an ID. If given a
@@ -115,6 +197,49 @@ def thumb_url(item, size, qualified=False, exists=False):
     if exists and not os.path.isfile(image_path):
         return None
     return url_for('/images/%s' % image, qualified=qualified)
+
+def thumb_url(item, size, qualified=True, exists=False):
+    """Get the thumbnail url for the given item and size.
+
+    :param item: A 2-tuple with a subdir name and an ID. If given a
+        ORM mapped class with _thumb_dir and id attributes, the info
+        can be extracted automatically.
+    :type item: ``tuple`` or mapped class instance
+    :param size: Size key to display, see ``thumb_sizes`` in
+        :mod:`mediadrop.config.app_config`
+    :type size: str
+    :param qualified: If ``True`` return the full URL including the domain.
+    :type qualified: bool
+    :param exists: If enabled, checks to see if the file actually exists.
+        If it doesn't exist, ``None`` is returned.
+    :type exists: bool
+    :returns: The relative or absolute URL.
+    :rtype: str
+
+    """
+    if not item:
+        return None
+
+    image_dir, item_id = _normalize_thumb_item(item)
+    image = '%s/%s%s.jpg' % (image_dir, item_id, size)
+    swift_image = '%s/%s/%s%s.jpg' % (config['swift_container'], image_dir, item_id, size)
+    image_path = os.path.join(config['image_dir'], image)
+
+    swift = _connect()
+    swift_base_url = swift.get_auth()[0]
+    swift_base_url = swift_base_url.replace('http://', '')
+
+    try:
+        swift.head_object(config['swift_container'], image)
+        return url_for('%s' % swift_image, qualified=True, host=swift_base_url)
+    except Exception, e:
+        swift.close()
+        if exists and not os.path.isfile(image_path):
+            return None
+
+    swift.close()
+    return url_for('/images/%s' % image, qualified=qualified)
+
 
 class ThumbDict(dict):
     """Dict wrapper with convenient attribute access"""
@@ -216,6 +341,7 @@ def create_thumbs_for(item, image_file, image_filename):
     """
     image_dir, item_id = _normalize_thumb_item(item)
     img = Image.open(image_file)
+    swift = _connect()
 
     # TODO: Allow other formats?
     for key, xy in config['thumb_sizes'][item._thumb_dir].iteritems():
@@ -224,6 +350,13 @@ def create_thumbs_for(item, image_file, image_filename):
         if thumb_img.mode != "RGB":
             thumb_img = thumb_img.convert("RGB")
         thumb_img.save(path, quality=90)
+        try:
+            thumb_file = open(path)
+            swift.put_object(config['swift_container'], swift_thumb_path(item, key), thumb_file)
+            thumb_file.close()
+        except Exception, e:
+            log.exception(e)
+            thumb_file.close()
 
     # Backup the original image, ensuring there's no odd chars in the ext.
     # Thumbs from DailyMotion include an extra query string that needs to be
@@ -238,6 +371,8 @@ def create_thumbs_for(item, image_file, image_filename):
         shutil.copyfileobj(image_file, backup_file)
         image_file.close()
         backup_file.close()
+
+    swift.close()
 
 def create_default_thumbs_for(item):
     """Create copies of the default thumbs for the given item.
@@ -273,6 +408,17 @@ def delete_thumbs(item):
     image_dir, item_id = _normalize_thumb_item(item)
     thumbs = thumb_paths(item, exists=True).itervalues()
     delete_files(thumbs, image_dir)
+
+    #Delete swift thumbs
+    thumbs = swift_thumb_paths(item, exists=True).itervalues()
+    swift = _connect()
+    for thumb in thumbs:
+        try:
+            swift.delete_object(config['swift_container'], thumb)
+        except Exception, e:
+            log.exception(e)
+
+    swift.close()
 
 def has_thumbs(item):
     """Return True if a thumb exists for this item.
